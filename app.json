@@ -1,0 +1,18 @@
+{
+    "id": "4d1a93b2-946d-42b0-ae4a-d9ccdfe22119",
+    "version": "0.0.1",
+    "requiredApiVersion": "^1.44.0",
+    "iconFile": "icon.png",
+    "author": {
+        "name": "Kartik",
+        "homepage": "home",
+        "support": "support"
+    },
+    "name": "HelloWorld",
+    "nameSlug": "helloworld",
+    "classFile": "HelloWorldApp.ts",
+    "description": "My first GSoC app",
+    "implements": [
+        "IUIKitInteractionHandler"
+    ]
+}
