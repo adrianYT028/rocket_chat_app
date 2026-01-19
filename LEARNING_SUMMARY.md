@@ -397,8 +397,7 @@ Every modal must be triggered by a real user action. The `triggerId` proves auth
 Data is automatically scoped to users. User A can't see User B's reminders because associations filter automatically.
 
 ### 3. **Permission Scoping**
-The app only has access to its own data namespace. It can't read other apps' data or system data unless explicitly granted permissions.
-
+The app only has access to its own data namespace. It can't read other apps' data or system dat 
 ---
 
 ## 🚀 Deployment Pipeline
