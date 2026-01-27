@@ -68,8 +68,8 @@ async function sendDirectMessage(modify: IModify, read: IRead, user: any, messag
 
 class RemindCommand implements ISlashCommand {
     public command = 'remind';
-    public i18nParamsExample = '[list|clear|help]';
-    public i18nDescription = 'Manage reminders. Use /remind to create, /remind list to view, /remind clear to delete all';
+    public i18nParamsExample = '[recur|stop|list|clear|help]';
+    public i18nDescription = 'Manage reminders. Use /remind recur for every-minute nagging, /remind stop to cancel';
     public providesPreview = false;
 
     constructor(private readonly app: App) {}
@@ -110,6 +110,53 @@ class RemindCommand implements ISlashCommand {
             return;
         }
 
+        // Check if user wants recurring reminders (every minute)
+        if (args.length > 0 && args[0].toLowerCase() === 'recur') {
+            const task = args.slice(1).join(' ') || 'Nagging reminder';
+
+            // Cron expression: every minute
+            // Format: "* * * * *" means: every minute, every hour, every day, every month, every day of week
+            await modify.getScheduler().scheduleRecurring({
+                id: 'recurring_reminder',
+                interval: '* * * * *',
+                data: {
+                    task: task,
+                    userId: sender.id,
+                    roomId: context.getRoom().id
+                }
+            });
+
+            const message = modify.getCreator().startMessage()
+                .setRoom(context.getRoom())
+                .setSender(sender)
+                .setText(`🔄 **Recurring reminder started!** I'll nag you every minute about: "${task}"\n\nUse \`/remind stop\` to make it stop.`);
+
+            await modify.getCreator().finish(message);
+            return;
+        }
+
+        // Check if user wants to stop recurring reminders
+        if (args.length > 0 && args[0].toLowerCase() === 'stop') {
+            try {
+                await modify.getScheduler().cancelJob('recurring_reminder');
+
+                const message = modify.getCreator().startMessage()
+                    .setRoom(context.getRoom())
+                    .setSender(sender)
+                    .setText('🛑 Recurring reminder stopped. Peace at last!');
+
+                await modify.getCreator().finish(message);
+            } catch (e) {
+                const message = modify.getCreator().startMessage()
+                    .setRoom(context.getRoom())
+                    .setSender(sender)
+                    .setText('❌ No active recurring reminder found.');
+
+                await modify.getCreator().finish(message);
+            }
+            return;
+        }
+
         // Check if user wants to list reminders
         if (args.length > 0 && args[0].toLowerCase() === 'list') {
             await this.listReminders(sender, read, modify, persis, context.getRoom());
@@ -142,6 +189,8 @@ class RemindCommand implements ISlashCommand {
             .setText('**Reminder Bot Commands**\n\n' +
                      '`/remind` - Create a new reminder\n' +
                      '`/remind schedule [task]` - Schedule a 10-second delayed reminder\n' +
+                     '`/remind recur [task]` - Start a recurring reminder (every minute)\n' +
+                     '`/remind stop` - Stop your recurring reminder\n' +
                      '`/remind list` - View all your reminders\n' +
                      '`/remind clear` - Clear all your reminders\n' +
                      '`/remind help` - Show this help message')
@@ -305,6 +354,12 @@ export class HelloWorldApp extends App implements IUIKitInteractionHandler {
         await configuration.scheduler.registerProcessors([
             {
                 id: 'reminder_job',
+                processor: this.reminderProcessor.bind(this),
+            },
+            // Register processor for recurring reminders.
+            // All users share this processor - user context is in job data
+            {
+                id: 'recurring_reminder',
                 processor: this.reminderProcessor.bind(this),
             },
         ]);

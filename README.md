@@ -10,6 +10,7 @@ This app lets you create and manage reminders directly within Rocket.Chat. You c
 
 - **Quick Reminders** - Save tasks instantly using an interactive modal
 - **Scheduled Notifications** - Test the scheduler with 10-second delayed reminders
+- **Recurring Reminders** - Set up reminders that repeat every minute (cron jobs)
 - **Task Management** - View all your saved reminders in a clean list
 - **Bulk Actions** - Clear all reminders with a single command
 - **Background Jobs** - Demonstrates scheduler functionality for time-based tasks
@@ -19,9 +20,11 @@ This app lets you create and manage reminders directly within Rocket.Chat. You c
 ```
 /remind                    - Open a form to create a new reminder
 /remind schedule [task]    - Get a reminder in 10 seconds (scheduler demo)
-/remind list              - See all your saved reminders
-/remind clear             - Delete all your reminders
-/remind help              - Show command reference
+/remind recur [task]       - Start a recurring reminder (fires every minute)
+/remind stop               - Stop your recurring reminder
+/remind list               - See all your saved reminders
+/remind clear              - Delete all your reminders
+/remind help               - Show command reference
 ```
 
 ## How to Use
@@ -30,6 +33,7 @@ This app lets you create and manage reminders directly within Rocket.Chat. You c
 2. Fill in the task details and click Save
 3. Use `/remind list` to view all your reminders anytime
 4. Try `/remind schedule Test task` to see the background scheduler in action
+5. Use `/remind recur Take a break` to get nagged every minute until you run `/remind stop`
 
 ## Development Setup
 
@@ -73,10 +77,11 @@ This app showcases several key concepts:
 - **Slash Commands** - Custom command handling with argument parsing
 - **UI Kit** - Modal forms for user input
 - **Persistence** - Storing user data with associations
-- **Scheduler** - Background job processing for delayed tasks
+- **Scheduler** - Background job processing for delayed and recurring tasks
+- **Cron Jobs** - Recurring reminders using cron expressions (`* * * * *`)
 - **Direct Messaging** - Sending private confirmations to users
 
-The scheduler implementation proves the app can handle time-based background jobs, which is essential for building a full-featured reminder system with custom dates and times.
+The scheduler implementation proves the app can handle both one-time and recurring time-based background jobs, which is essential for building a full-featured reminder system.
 
 ## What I Learned
 
@@ -84,18 +89,21 @@ Building this taught me how to work with the Rocket.Chat Apps Engine, including:
 - How slash commands are processed and routed
 - Managing app state using the persistence API
 - Scheduling background jobs that execute after a delay
+- Implementing recurring tasks with cron expressions
+- Job lifecycle management (create, execute, cancel)
 - Creating interactive forms with UIKit blocks
 - Handling user interactions and responses
 
 ## Future Ideas
 
 Some features I'm thinking about adding:
-- Custom time intervals (minutes, hours, days)
-- Specific date/time scheduling
-- Recurring reminders
+- Custom time intervals (5 minutes, 1 hour, daily, weekly)
+- Specific date/time scheduling (e.g., "remind me on Friday at 3pm")
+- Customizable recurring patterns (every 30 minutes, hourly, daily)
 - Reminder notifications in DMs
 - Mark reminders as complete
 - Edit existing reminders
+- Snooze functionality
 
 ## Resources
 
