@@ -14,6 +14,119 @@ import { ISlashCommand, SlashCommandContext } from '@rocket.chat/apps-engine/def
 import { IUIKitInteractionHandler, IUIKitResponse, UIKitViewSubmitInteractionContext } from '@rocket.chat/apps-engine/definition/uikit';
 
 /**
+ * Custom date parser - built from scratch to avoid external dependencies
+ * Parses natural language date/time expressions into JavaScript Date objects
+ */
+function parseNaturalDate(text: string): Date | null {
+    const now = new Date();
+    const textLower = text.toLowerCase();
+
+    // Extract time (e.g., "5pm", "17:00", "3:30pm")
+    let hour = 0;
+    let minute = 0;
+    let hasTime = false;
+
+    // Match patterns like "5pm", "5:30pm", "17:00"
+    const timeMatch = textLower.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+    if (timeMatch) {
+        hour = parseInt(timeMatch[1]);
+        minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+        const meridiem = timeMatch[3];
+
+        if (meridiem === 'pm' && hour < 12) hour += 12;
+        if (meridiem === 'am' && hour === 12) hour = 0;
+
+        hasTime = true;
+    }
+
+    // Check for relative time expressions
+    if (textLower.includes('in ')) {
+        // "in 2 days", "in 2 hours", "in 30 minutes", "in 10 seconds"
+        const daysMatch = textLower.match(/in (\d+) days?/);
+        const hoursMatch = textLower.match(/in (\d+) hours?/);
+        const minutesMatch = textLower.match(/in (\d+) (?:minutes?|mins?)/);
+        const secondsMatch = textLower.match(/in (\d+) (?:seconds?|secs?)/);
+
+        if (daysMatch) {
+            const daysToAdd = parseInt(daysMatch[1]);
+            return new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
+        }
+        if (hoursMatch) {
+            const hoursToAdd = parseInt(hoursMatch[1]);
+            return new Date(now.getTime() + hoursToAdd * 60 * 60 * 1000);
+        }
+        if (minutesMatch) {
+            const minutesToAdd = parseInt(minutesMatch[1]);
+            return new Date(now.getTime() + minutesToAdd * 60 * 1000);
+        }
+        if (secondsMatch) {
+            const secondsToAdd = parseInt(secondsMatch[1]);
+            return new Date(now.getTime() + secondsToAdd * 1000);
+        }
+    }
+
+    // Check for "tomorrow" (handle common misspelling "tommorow")
+    if (textLower.includes('tomorrow') || textLower.includes('tommorow') || textLower.includes('tmrw')) {
+        const tomorrow = new Date(now);
+        tomorrow.setDate(now.getDate() + 1);
+        if (hasTime) {
+            tomorrow.setHours(hour, minute, 0, 0);
+        } else {
+            tomorrow.setHours(9, 0, 0, 0); // Default to 9am
+        }
+        return tomorrow;
+    }
+
+    // Check for "today"
+    if (textLower.includes('today')) {
+        const today = new Date(now);
+        if (hasTime) {
+            today.setHours(hour, minute, 0, 0);
+        }
+        return today;
+    }
+
+    // Check for day of week (e.g., "next monday", "friday")
+    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    for (let i = 0; i < days.length; i++) {
+        if (textLower.includes(days[i])) {
+            const targetDay = i;
+            const currentDay = now.getDay();
+            let daysToAdd = targetDay - currentDay;
+
+            // If day has passed this week or is today and time has passed, go to next week
+            if (daysToAdd <= 0 || textLower.includes('next')) {
+                daysToAdd += 7;
+            }
+
+            const targetDate = new Date(now);
+            targetDate.setDate(now.getDate() + daysToAdd);
+
+            if (hasTime) {
+                targetDate.setHours(hour, minute, 0, 0);
+            } else {
+                targetDate.setHours(9, 0, 0, 0); // Default to 9am
+            }
+            return targetDate;
+        }
+    }
+
+    // If we found a time but no date, assume today
+    if (hasTime) {
+        const result = new Date(now);
+        result.setHours(hour, minute, 0, 0);
+
+        // If time has already passed today, assume tomorrow
+        if (result <= now) {
+            result.setDate(result.getDate() + 1);
+        }
+        return result;
+    }
+
+    return null;
+}
+
+/**
  * Opens a modal dialog for creating a reminder.
  *
  * Why a modal? It provides a better UX than asking users to type everything in one command.
@@ -68,8 +181,8 @@ async function sendDirectMessage(modify: IModify, read: IRead, user: any, messag
 
 class RemindCommand implements ISlashCommand {
     public command = 'remind';
-    public i18nParamsExample = '[recur|stop|list|clear|help]';
-    public i18nDescription = 'Manage reminders. Use /remind recur for every-minute nagging, /remind stop to cancel';
+    public i18nParamsExample = '[call mom tomorrow at 5pm|recur|stop|list|clear|help]';
+    public i18nDescription = 'Smart reminder bot with natural language parsing. Try: /remind call mom tomorrow at 5pm';
     public providesPreview = false;
 
     constructor(private readonly app: App) {}
@@ -174,6 +287,69 @@ class RemindCommand implements ISlashCommand {
             return;
         }
 
+        // Smart Natural Language Processing
+        // If user typed something that's not a command, try to parse it as a date/time
+        if (args.length > 0) {
+            const rawText = args.join(' ');
+            const parsedDate = parseNaturalDate(rawText);
+
+            if (parsedDate) {
+                // SUCCESS: We found a date!
+                // Calculate time difference for scheduling
+                const now = new Date();
+                const delayMs = parsedDate.getTime() - now.getTime();
+
+                if (delayMs > 0) {
+                    // Schedule the reminder
+                    await modify.getScheduler().scheduleOnce({
+                        id: 'reminder_job',
+                        when: parsedDate.toISOString(),
+                        data: {
+                            task: rawText,
+                            userId: sender.id,
+                            roomId: context.getRoom().id
+                        }
+                    });
+
+                    const message = modify.getCreator().startMessage()
+                        .setRoom(context.getRoom())
+                        .setSender(sender)
+                        .setText(`🧠 **Smart Schedule:** \nI understood: **"${rawText}"**\n📅 **Target Date:** ${parsedDate.toLocaleString('en-IN', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            timeZone: 'Asia/Kolkata',
+                            timeZoneName: 'short'
+                        })}`);
+
+                    await modify.getCreator().finish(message);
+                    return;
+                } else {
+                    // Date is in the past
+                    const message = modify.getCreator().startMessage()
+                        .setRoom(context.getRoom())
+                        .setSender(sender)
+                        .setText(`⚠️ That time is in the past! Try a future date like "tomorrow at 3pm"`);
+
+                    await modify.getCreator().finish(message);
+                    return;
+                }
+            } else {
+                // No date found in text
+                const message = modify.getCreator().startMessage()
+                    .setRoom(context.getRoom())
+                    .setSender(sender)
+                    .setText(`🤔 **I didn't catch the time.**\nTry typing: \`/remind Check servers tomorrow at 9am\``);
+
+                await modify.getCreator().finish(message);
+                return;
+            }
+        }
+
         // Default action: open modal for creating reminders.
         // Why not accept task text directly as args? Modals provide better UX:
         // - Multi-line support for detailed tasks
@@ -186,14 +362,19 @@ class RemindCommand implements ISlashCommand {
 
     private async showHelp(modify: IModify, room: any, user: any): Promise<void> {
         const message = modify.getCreator().startMessage()
-            .setText('**Reminder Bot Commands**\n\n' +
-                     '`/remind` - Create a new reminder\n' +
-                     '`/remind schedule [task]` - Schedule a 10-second delayed reminder\n' +
-                     '`/remind recur [task]` - Start a recurring reminder (every minute)\n' +
-                     '`/remind stop` - Stop your recurring reminder\n' +
-                     '`/remind list` - View all your reminders\n' +
-                     '`/remind clear` - Clear all your reminders\n' +
-                     '`/remind help` - Show this help message')
+            .setText('**🧠 Smart Reminder Bot Commands**\n\n' +
+                     '**Natural Language (NEW!):**\n' +
+                     '`/remind call mom tomorrow at 5pm` - Smart scheduling!\n' +
+                     '`/remind meeting in 2 hours` - Works with relative times\n' +
+                     '`/remind dentist next Friday at 3pm` - Understands dates\n\n' +
+                     '**Other Commands:**\n' +
+                     '`/remind` - Create a new reminder via form\n' +
+                     '`/remind schedule [task]` - 10-second test reminder\n' +
+                     '`/remind recur [task]` - Every-minute recurring reminder\n' +
+                     '`/remind stop` - Stop recurring reminder\n' +
+                     '`/remind list` - View all reminders\n' +
+                     '`/remind clear` - Clear all reminders\n' +
+                     '`/remind help` - Show this message')
             .setRoom(room)
             .setSender(user);
 

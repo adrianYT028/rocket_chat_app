@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "../Rocket.Chat-develop"
+		},
+		{
+			"path": "."
+		}
+	],
+	"settings": {}
+}
